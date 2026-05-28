@@ -72,4 +72,4 @@ This is a personal project built to explore AI in healthcare. It is not a medica
 
 **Supriya GM** — CS Masters student with an Information Science background, passionate about building AI tools that solve real healthcare problems.
 
-[LinkedIn](https://linkedin.com/in/your-profile) | [GitHub](https://github.com/Suprigm04)
+[LinkedIn](https://www.linkedin.com/in/supriyagangadharamalebennur) | [GitHub](https://github.com/Suprigm04)
