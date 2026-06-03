@@ -7,6 +7,7 @@ from predict_future import get_future_prediction
 from datetime import date
 from dotenv import load_dotenv
 from groq import Groq
+from auth import init_users_db, create_user, verify_user
 
 load_dotenv()
 
@@ -20,6 +21,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS checkins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT,
+            username TEXT,
             q1 INTEGER, q2 INTEGER, q3 INTEGER, q4 INTEGER, q5 INTEGER,
             score INTEGER,
             risk_level TEXT
@@ -29,13 +31,13 @@ def init_db():
     conn.close()
 
 
-def save_checkin(q1, q2, q3, q4, q5, score, risk_level):
+def save_checkin(username, q1, q2, q3, q4, q5, score, risk_level):
     conn = sqlite3.connect("burnoutguard.db")
     c = conn.cursor()
     c.execute('''
-        INSERT INTO checkins (date, q1, q2, q3, q4, q5, score, risk_level)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (str(date.today()), q1, q2, q3, q4, q5, score, risk_level))
+        INSERT INTO checkins (date, username, q1, q2, q3, q4, q5, score, risk_level)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (str(date.today()), username, q1, q2, q3, q4, q5, score, risk_level))
     conn.commit()
     conn.close()
 
@@ -152,6 +154,43 @@ st.markdown("""
 
 # ── App ──────────────────────────────────────────────────────
 init_db()
+init_users_db()
+
+# ── Login / Signup ───────────────────────────────────────────
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+    st.session_state["username"] = None
+    st.session_state["role"] = None
+
+if not st.session_state["logged_in"]:
+    st.title("🛡️ BurnoutGuard AI")
+    tab1, tab2 = st.tabs(["Login", "Sign Up"])
+
+    with tab1:
+        st.subheader("Welcome back")
+        username = st.text_input("Username", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
+        if st.button("Login"):
+            role = verify_user(username, password)
+            if role:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.session_state["role"] = role
+                st.rerun()
+            else:
+                st.error("Invalid username or password")
+
+    with tab2:
+        st.subheader("Create your account")
+        new_username = st.text_input("Choose a username", key="signup_user")
+        new_password = st.text_input(
+            "Choose a password", type="password", key="signup_pass")
+        if st.button("Sign Up"):
+            if create_user(new_username, new_password):
+                st.success("Account created! Please login.")
+            else:
+                st.error("Username already taken.")
+    st.stop()
 
 st.title("🛡️ BurnoutGuard AI")
 st.subheader("Weekly Check-in")
@@ -186,7 +225,8 @@ if st.button("Submit Check-in"):
         emoji = "🔴"
 
     ml_prediction = predict_risk(q1, q2, q3, q4, q5, score)
-    save_checkin(q1, q2, q3, q4, q5, score, risk_level)
+    save_checkin(st.session_state["username"], q1,
+                 q2, q3, q4, q5, score, risk_level)
     st.session_state["score"] = score
     st.session_state["risk_level"] = risk_level
     st.session_state["show_companion"] = True
@@ -202,8 +242,9 @@ st.subheader("📈 Your Burnout Trend")
 
 conn = sqlite3.connect("burnoutguard.db")
 df = pd.read_sql_query(
-    "SELECT date, score, risk_level FROM checkins ORDER BY date", conn)
-conn.close()
+    "SELECT date, score, risk_level FROM checkins WHERE username = ? ORDER BY date",
+    conn, params=(st.session_state["username"],)
+)
 
 if len(df) > 0:
     fig = go.Figure()
