@@ -3,6 +3,23 @@ import sqlite3
 import pandas as pd
 import plotly.graph_objects as go
 
+
+# ── Password Protection ──────────────────────────────────────
+if "manager_auth" not in st.session_state:
+    st.session_state["manager_auth"] = False
+
+if not st.session_state["manager_auth"]:
+    st.title("📊 Manager Dashboard")
+    st.write("This area is restricted to managers only.")
+    password = st.text_input("Enter manager password", type="password")
+    if st.button("Access Dashboard"):
+        if password == "manager123":
+            st.session_state["manager_auth"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password")
+    st.stop()
+
 st.set_page_config(
     page_title="BurnoutGuard — Manager View",
     page_icon="📊",
