@@ -3,13 +3,15 @@ import sqlite3
 import os
 import pandas as pd
 import plotly.graph_objects as go
-from predict_future import get_future_prediction
 from datetime import date
 from dotenv import load_dotenv
 from groq import Groq
+import pickle
 from auth import init_users_db, create_user, verify_user
+from predict_future import get_future_prediction
 
-load_dotenv()
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=".env", override=True)
 
 # ── Database setup ───────────────────────────────────────────
 
@@ -43,7 +45,6 @@ def save_checkin(username, q1, q2, q3, q4, q5, score, risk_level):
 
 
 def predict_risk(q1, q2, q3, q4, q5, score):
-    import pickle
     with open("burnout_model.pkl", "rb") as f:
         model = pickle.load(f)
     prediction = model.predict([[q1, q2, q3, q4, q5, score]])
@@ -58,7 +59,11 @@ def get_ai_response(user_message, score, risk_level):
     if any(word in user_message.lower() for word in crisis_words):
         return "🆘 I'm concerned about what you shared. Please reach out for help immediately:\n\n**988 Suicide & Crisis Lifeline — call or text 988**\n\nYou are not alone."
 
-    client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        return "⚠️ API key not found. Please check your .env file."
+
+    client = Groq(api_key=api_key)
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[
@@ -94,14 +99,15 @@ st.markdown("""
         color: #2c3e50 !important;
     }
     .stButton > button {
-        background: #e74c3c;
-        color: white;
-        border: none;
-        border-radius: 25px;
-        padding: 10px 30px;
-        font-size: 16px;
-        font-weight: bold;
-        width: 100%;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: bold;
+    width: auto;
+}
     }
     .stButton > button:hover {
         background: #c0392b;
@@ -120,37 +126,6 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-st.markdown("""
-    <div style="
-        background: white;
-        padding: 10px 20px;
-        border-bottom: 2px solid #e74c3c;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    ">
-        <div style="font-size: 20px; font-weight: 900; color: #e74c3c;">
-            🛡️ BurnoutGuard AI
-        </div>
-        <div style="display: flex; gap: 20px;">
-            <a href="/" target="_self" style="
-                text-decoration: none;
-                color: #e74c3c;
-                font-weight: 600;
-                font-size: 14px;
-            ">🏠 Home</a>
-            <a href="/Manager_Dashboard" target="_self" style="
-                text-decoration: none;
-                color: #2c3e50;
-                font-weight: 600;
-                font-size: 14px;
-            ">📊 Manager Dashboard</a>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
 
 # ── App ──────────────────────────────────────────────────────
 init_db()
@@ -192,7 +167,30 @@ if not st.session_state["logged_in"]:
                 st.error("Username already taken.")
     st.stop()
 
-st.title("🛡️ BurnoutGuard AI")
+# ── Navbar ───────────────────────────────────────────────────
+st.markdown(f"""
+    <div style="
+        background: white;
+        padding: 10px 20px;
+        border-bottom: 2px solid #e74c3c;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    ">
+        <div style="font-size: 20px; font-weight: 900; color: #e74c3c;">
+            🛡️ BurnoutGuard AI
+        </div>
+        <div style="display: flex; gap: 20px; align-items: center;">
+            <a href="/" target="_self" style="text-decoration: none; color: #e74c3c; font-weight: 600; font-size: 14px;">🏠 Home</a>
+            <a href="/Manager_Dashboard" target="_self" style="text-decoration: none; color: #2c3e50; font-weight: 600; font-size: 14px;">📊 Manager Dashboard</a>
+            <span style="color: #7f8c8d; font-size: 14px;">👋 {st.session_state['username']}</span>
+            <a href="/?logout=true" target="_self" style="text-decoration: none; background: #e74c3c; color: white; padding: 5px 12px; border-radius: 15px; font-size: 13px; font-weight: 600;">🚪 Logout</a>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+# ── Survey ───────────────────────────────────────────────────
 st.subheader("Weekly Check-in")
 st.write("This takes 2 minutes. Your responses are private.")
 st.caption("Rate each statement: 1 = Never  |  2 = Rarely  |  3 = Sometimes  |  4 = Often  |  5 = Always")
@@ -245,6 +243,7 @@ df = pd.read_sql_query(
     "SELECT date, score, risk_level FROM checkins WHERE username = ? ORDER BY date",
     conn, params=(st.session_state["username"],)
 )
+conn.close()
 
 if len(df) > 0:
     fig = go.Figure()
@@ -269,51 +268,51 @@ if len(df) > 0:
         paper_bgcolor="white"
     )
     st.plotly_chart(fig, use_container_width=True)
-# ── Forward prediction ───────────────────────────────────────
-future_scores, future_risk, trend_message = get_future_prediction()
 
-if future_scores:
-    st.divider()
-    st.subheader("🔮 Your Burnout Forecast")
-    st.write("Based on your trend, here's where you're heading:")
+    future_scores, future_risk, trend_message = get_future_prediction()
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Week 1 Forecast", f"{future_scores[0]}/25")
-    col2.metric("Week 2 Forecast", f"{future_scores[1]}/25")
-    col3.metric("Week 3 Forecast", f"{future_scores[2]}/25")
+    if future_scores:
+        st.divider()
+        st.subheader("🔮 Your Burnout Forecast")
+        st.write("Based on your trend, here's where you're heading:")
 
-    if future_risk == "High Risk":
-        st.error(f"🔴 {trend_message}")
-    elif future_risk == "Moderate Risk":
-        st.warning(f"🟡 {trend_message}")
-    else:
-        st.success(f"🟢 {trend_message}")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Week 1 Forecast", f"{future_scores[0]}/25")
+        col2.metric("Week 2 Forecast", f"{future_scores[1]}/25")
+        col3.metric("Week 3 Forecast", f"{future_scores[2]}/25")
+
+        if future_risk == "High Risk":
+            st.error(f"🔴 {trend_message}")
+        elif future_risk == "Moderate Risk":
+            st.warning(f"🟡 {trend_message}")
+        else:
+            st.success(f"🟢 {trend_message}")
+
 else:
     st.info("Submit a few check-ins to see your trend.")
 
 # ── AI Companion ─────────────────────────────────────────────
-if True:
-    st.divider()
-    st.subheader("💬 Talk to Your AI Companion")
-    st.write("How are you feeling? You can share anything here.")
+st.divider()
+st.subheader("💬 Talk to Your AI Companion")
+st.write("How are you feeling? You can share anything here.")
 
-    if "messages" not in st.session_state:
-        st.session_state["messages"] = []
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
 
-    for msg in st.session_state["messages"]:
-        with st.chat_message(msg["role"]):
-            st.write(msg["content"])
+for msg in st.session_state["messages"]:
+    with st.chat_message(msg["role"]):
+        st.write(msg["content"])
 
-    user_input = st.chat_input("Type here...")
-    if user_input:
-        st.session_state["messages"].append(
-            {"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.write(user_input)
+user_input = st.chat_input("Type here...")
+if user_input:
+    st.session_state["messages"].append(
+        {"role": "user", "content": user_input})
+    with st.chat_message("user"):
+        st.write(user_input)
 
-        response = get_ai_response(
-            user_input, st.session_state["score"], st.session_state["risk_level"])
-        st.session_state["messages"].append(
-            {"role": "assistant", "content": response})
-        with st.chat_message("assistant"):
-            st.write(response)
+    response = get_ai_response(user_input, st.session_state.get(
+        "score", 15), st.session_state.get("risk_level", "Moderate Risk"))
+    st.session_state["messages"].append(
+        {"role": "assistant", "content": response})
+    with st.chat_message("assistant"):
+        st.write(response)
